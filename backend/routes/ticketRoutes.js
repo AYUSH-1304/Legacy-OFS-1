@@ -10,13 +10,20 @@ const {
     deleteTicket,
     submitTicket,
     approveTicket,
-    rejectTicket
+    rejectTicket,
+    updateFinalStatus
 } = require("../controllers/ticketController");
 const {
     addComment,
     getComments,
     getTicketHistory
 } = require("../controllers/commentController");
+const {
+    getLineItems,
+    addLineItem,
+    updateLineItem,
+    deleteLineItem
+} = require("../controllers/lineItemController");
 
 const { protect, adminOnly } = require("../middleware/authMiddleware");
 
@@ -33,6 +40,14 @@ router.delete("/:id", deleteTicket);
 router.patch("/:id/submit", submitTicket);
 router.patch("/:id/approve", adminOnly, approveTicket);
 router.patch("/:id/reject", adminOnly, rejectTicket);
+router.patch("/:id/final-status", adminOnly, updateFinalStatus);
+
+// Ticket Line Items
+router.get("/:ticketId/line-items", getLineItems);
+router.post("/:ticketId/line-items", addLineItem);
+router.put("/:ticketId/line-items/:lineItemId", updateLineItem);
+router.delete("/:ticketId/line-items/:lineItemId", deleteLineItem);
+
 // Ticket Comments
 router.post("/:ticketId/comments", addComment);
 router.get("/:ticketId/comments", getComments);
