@@ -8,6 +8,9 @@ const pool = require("./db");
 const authRoutes = require("./routes/authRoutes");
 const ticketRoutes = require("./routes/ticketRoutes");
 const deviceRoutes = require("./routes/deviceRoutes");
+const syncRoutes = require("./routes/syncRoutes");
+const templateRoutes = require("./routes/templateRoutes");
+
 const app = express();
 
 app.use(cors({
@@ -50,7 +53,15 @@ app.use("/api/auth", authRoutes);
 
 // Ticket APIs
 app.use("/api/tickets", ticketRoutes);
+
+// Device APIs
 app.use("/api/devices", deviceRoutes);
+
+// Offline Sync APIs
+app.use("/api/sync", syncRoutes);
+
+// Template APIs
+app.use("/api/templates", templateRoutes);
 
 // Unknown route handler
 app.use((req, res) => {
