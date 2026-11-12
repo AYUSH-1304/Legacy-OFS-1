@@ -42,8 +42,35 @@ function TemplateManagement() {
   };
 
   useEffect(() => {
-    fetchTemplates();
-  }, []);
+  let cancelled = false;
+
+  const loadInitialTemplates = async () => {
+    try {
+      const response = await api.get("/templates");
+
+      if (!cancelled) {
+        setTemplates(response.data.templates || []);
+        setError("");
+      }
+    } catch (err) {
+      if (!cancelled) {
+        setError(
+          err.response?.data?.message || "Unable to load templates."
+        );
+      }
+    } finally {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }
+  };
+
+  loadInitialTemplates();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;

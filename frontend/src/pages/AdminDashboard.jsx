@@ -6,14 +6,21 @@ import api from "../services/api";
 function AdminDashboard() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  const fetchTickets = async () => {
+  const fetchTickets = async (isRefresh = false) => {
     try {
-      setLoading(true);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
       setError("");
 
       const response = await api.get("/tickets");
@@ -26,6 +33,7 @@ function AdminDashboard() {
       );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -34,40 +42,65 @@ function AdminDashboard() {
   }, []);
 
   const approveTicket = async (id) => {
-    if (!window.confirm("Approve this ticket?")) return;
+    if (!window.confirm("Are you sure you want to approve this ticket?")) {
+      return;
+    }
 
     try {
+      setError("");
+      setMessage("");
+
       await api.patch(`/tickets/${id}/approve`);
-      alert("Ticket approved successfully.");
-      fetchTickets();
+
+      setMessage("Ticket approved successfully.");
+      await fetchTickets(true);
     } catch (err) {
-      alert(err.response?.data?.message || "Approval failed.");
+      setError(
+        err.response?.data?.message || "Approval failed."
+      );
     }
   };
 
   const rejectTicket = async (id) => {
     const reason = window.prompt("Enter rejection reason:");
 
-    if (!reason || !reason.trim()) return;
+    if (!reason || !reason.trim()) {
+      return;
+    }
 
     try {
+      setError("");
+      setMessage("");
+
       await api.patch(`/tickets/${id}/reject`, {
         rejection_reason: reason.trim(),
       });
 
-      alert("Ticket rejected successfully.");
-      fetchTickets();
+      setMessage("Ticket rejected successfully.");
+      await fetchTickets(true);
     } catch (err) {
-      alert(err.response?.data?.message || "Rejection failed.");
+      setError(
+        err.response?.data?.message || "Rejection failed."
+      );
     }
+  };
+
+  const statusCounts = {
+    Total: tickets.length,
+    Draft: tickets.filter((t) => t.status === "Draft").length,
+    Submitted: tickets.filter((t) => t.status === "Submitted").length,
+    Approved: tickets.filter((t) => t.status === "Approved").length,
+    Rejected: tickets.filter((t) => t.status === "Rejected").length,
+    Invoiced: tickets.filter((t) => t.status === "Invoiced").length,
+    Void: tickets.filter((t) => t.status === "Void").length,
   };
 
   const filteredTickets = tickets.filter((ticket) => {
     const searchText = search.toLowerCase().trim();
 
     const matchesSearch =
-      (ticket.ticket_number || "").toLowerCase().includes(searchText) ||
-      (ticket.customer_name || "").toLowerCase().includes(searchText) ||
+      String(ticket.ticket_number || "").toLowerCase().includes(searchText) ||
+      String(ticket.customer_name || "").toLowerCase().includes(searchText) ||
       String(ticket.created_by || "").toLowerCase().includes(searchText);
 
     const matchesStatus =
@@ -81,41 +114,84 @@ function AdminDashboard() {
     setStatusFilter("All");
   };
 
+  const getStatusClass = (status) => {
+    return `status status-${String(status || "draft").toLowerCase()}`;
+  };
+
   return (
-    <div className="page-container">
-      <h1>Admin Dashboard</h1>
+    <div className="page-container admin-page">
+      <div className="page-header">
+        <div>
+          <h1>Admin Dashboard</h1>
+          <p>Manage, review and track all field service tickets.</p>
+        </div>
 
-      <p>
-        <Link to="/dashboard">Dashboard</Link>
-        {" | "}
-        <Link to="/admin/templates">Template Management</Link>
-        {" | "}
-        <Link to="/devices">Device Management</Link>
-      </p>
+        <div className="admin-header-actions">
+          <button
+            onClick={() => fetchTickets(true)}
+            disabled={refreshing}
+          >
+            {refreshing ? "Refreshing..." : "↻ Refresh"}
+          </button>
 
-      <h2>All Tickets ({tickets.length})</h2>
+          <Link to="/admin/templates" className="btn">
+            Manage Templates
+          </Link>
 
-      <button onClick={fetchTickets}>Refresh</button>
+          <Link to="/devices" className="btn">
+            Device Management
+          </Link>
+        </div>
+      </div>
 
-      <div style={{ margin: "20px 0" }}>
-        <h3>Search Tickets</h3>
+      <div className="admin-welcome">
+        <div>
+          <span>ADMINISTRATION</span>
+          <h2>Ticket Overview</h2>
+          <p>Monitor ticket activity and review submitted work.</p>
+        </div>
 
-        <input
-          type="text"
-          placeholder="Search customer name or ticket number..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: "10px", width: "100%", maxWidth: "400px" }}
-        />
+        <div className="admin-total">
+          <strong>{tickets.length}</strong>
+          <span>Total Tickets</span>
+        </div>
+      </div>
 
-        <div style={{ marginTop: "12px" }}>
-          <label htmlFor="statusFilter">Filter by Status: </label>
+      <section className="admin-stats-grid">
+        {Object.entries(statusCounts).map(([label, count]) => (
+          <div className="admin-stat-card" key={label}>
+            <span>{label} Tickets</span>
+            <strong>{count}</strong>
+          </div>
+        ))}
+      </section>
+
+      {error && <p className="error-message">{error}</p>}
+      {message && <p className="success-message">{message}</p>}
+
+      <section className="admin-ticket-section">
+        <div className="admin-section-heading">
+          <div>
+            <h2>All Field Tickets</h2>
+            <p>Search and filter tickets by status or customer.</p>
+          </div>
+
+          <span className="admin-result-count">
+            {filteredTickets.length} Results
+          </span>
+        </div>
+
+        <div className="admin-filters">
+          <input
+            type="search"
+            placeholder="Search ticket number, customer or creator..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
 
           <select
-            id="statusFilter"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ padding: "8px" }}
           >
             <option value="All">All Statuses</option>
             <option value="Draft">Draft</option>
@@ -126,64 +202,93 @@ function AdminDashboard() {
             <option value="Void">Void</option>
           </select>
 
-          <button
-            onClick={clearFilters}
-            style={{ marginLeft: "10px" }}
-          >
-            Clear Search
+          <button type="button" onClick={clearFilters}>
+            Clear Filters
           </button>
         </div>
 
-        <p>
-          Showing {filteredTickets.length} of {tickets.length} tickets
-        </p>
-      </div>
+        {loading && (
+          <div className="loading">Loading tickets...</div>
+        )}
 
-      {loading && <p>Loading tickets...</p>}
-      {error && <p className="error-message">{error}</p>}
-
-      {!loading && !error && filteredTickets.length === 0 && (
-        <p>No matching tickets found.</p>
-      )}
-
-      <div className="ticket-list">
-        {filteredTickets.map((ticket) => (
-          <div className="ticket-card" key={ticket.id}>
-            <h3>{ticket.ticket_number}</h3>
-
+        {!loading && filteredTickets.length === 0 && (
+          <div className="empty-state">
+            <h3>No Tickets Found</h3>
             <p>
-              <strong>Customer:</strong> {ticket.customer_name}
+              {tickets.length === 0
+                ? "No tickets have been created yet."
+                : "Try changing your search or status filter."}
             </p>
-
-            <p>
-              <strong>Status:</strong> {ticket.status}
-            </p>
-
-            <p>
-              <strong>Created By:</strong> {ticket.created_by}
-            </p>
-
-            {ticket.status === "Submitted" && (
-              <div>
-                <button onClick={() => approveTicket(ticket.id)}>
-                  Approve
-                </button>
-
-                <button onClick={() => rejectTicket(ticket.id)}>
-                  Reject
-                </button>
-              </div>
-            )}
-
-            {ticket.rejection_reason && (
-              <p>
-                <strong>Rejection Reason:</strong>{" "}
-                {ticket.rejection_reason}
-              </p>
-            )}
           </div>
-        ))}
-      </div>
+        )}
+
+        {!loading && filteredTickets.length > 0 && (
+          <div className="admin-ticket-list">
+            {filteredTickets.map((ticket) => (
+              <article className="admin-ticket-card" key={ticket.id}>
+                <div className="admin-ticket-top">
+                  <div>
+                    <h3>{ticket.ticket_number || `Ticket #${ticket.id}`}</h3>
+                    <span>{ticket.customer_name}</span>
+                  </div>
+
+                  <span className={getStatusClass(ticket.status)}>
+                    {ticket.status}
+                  </span>
+                </div>
+
+                <div className="admin-ticket-details">
+                  <div>
+                    <span>Created By</span>
+                    <strong>{ticket.created_by || "Not available"}</strong>
+                  </div>
+
+                  <div>
+                    <span>Start Date</span>
+                    <strong>{ticket.work_start_date || "Not specified"}</strong>
+                  </div>
+
+                  <div>
+                    <span>End Date</span>
+                    <strong>{ticket.work_end_date || "Not specified"}</strong>
+                  </div>
+                </div>
+
+                {ticket.rejection_reason && (
+                  <div className="admin-rejection-reason">
+                    <strong>Rejection Reason:</strong>
+                    <p>{ticket.rejection_reason}</p>
+                  </div>
+                )}
+
+                <div className="admin-ticket-actions">
+                  <Link to={`/tickets/${ticket.id}`} className="btn">
+                    View Details
+                  </Link>
+
+                  {ticket.status === "Submitted" && (
+                    <>
+                      <button
+                        className="admin-approve-btn"
+                        onClick={() => approveTicket(ticket.id)}
+                      >
+                        Approve
+                      </button>
+
+                      <button
+                        className="admin-reject-btn"
+                        onClick={() => rejectTicket(ticket.id)}
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

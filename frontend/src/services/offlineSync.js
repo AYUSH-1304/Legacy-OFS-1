@@ -4,7 +4,10 @@ const TICKETS_KEY = "legacy_ofs_offline_tickets";
 
 // Generate unique local ID
 const generateLocalId = () => {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
 
@@ -13,22 +16,25 @@ const generateLocalId = () => {
     .slice(2)}`;
 };
 
-// Read pending actions
-export const getOfflineActions = () => {
+// Safely read localStorage
+const readStorage = (key) => {
   try {
-    return JSON.parse(localStorage.getItem(ACTIONS_KEY) || "[]");
-  } catch {
+    const data = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error(`Unable to read ${key}:`, error);
     return [];
   }
 };
 
+// Read pending actions
+export const getOfflineActions = () => {
+  return readStorage(ACTIONS_KEY);
+};
+
 // Read locally saved tickets
 export const getOfflineTickets = () => {
-  try {
-    return JSON.parse(localStorage.getItem(TICKETS_KEY) || "[]");
-  } catch {
-    return [];
-  }
+  return readStorage(TICKETS_KEY);
 };
 
 // Save a ticket locally
@@ -36,10 +42,11 @@ export const saveOfflineTicket = (ticketData) => {
   const localId = generateLocalId();
 
   const ticket = {
-    local_id: localId,
     ...ticketData,
+    local_id: localId,
     local_status: "Pending Sync",
     created_at: new Date().toISOString(),
+    sync_message: "Waiting for internet connection.",
   };
 
   const actions = getOfflineActions();
@@ -74,49 +81,111 @@ export const syncOfflineActions = async (api) => {
     return {
       success: true,
       message: "No pending actions to sync.",
+      syncedCount: 0,
+      failedCount: 0,
+      pendingCount: 0,
     };
   }
+
+  // Mark tickets as syncing
+  const ticketsBeforeSync = getOfflineTickets();
+
+  const syncingTickets = ticketsBeforeSync.map((ticket) => {
+    const isPending = actions.some(
+      (action) => action.local_id === ticket.local_id
+    );
+
+    return isPending
+      ? {
+          ...ticket,
+          local_status: "Syncing",
+          sync_message: "Sending data to server...",
+        }
+      : ticket;
+  });
+
+  localStorage.setItem(
+    TICKETS_KEY,
+    JSON.stringify(syncingTickets)
+  );
 
   try {
     const response = await api.post("/sync", {
       actions,
     });
 
-    const results = response.data.results || [];
+    const results = response.data?.results;
+
+    // Never remove actions if the server response is unexpected
+    if (!Array.isArray(results)) {
+      localStorage.setItem(
+        TICKETS_KEY,
+        JSON.stringify(
+          getOfflineTickets().map((ticket) => ({
+            ...ticket,
+            local_status: "Failed",
+            sync_message: "Unexpected response from server.",
+          }))
+        )
+      );
+
+      return {
+        success: false,
+        message: "Invalid sync response. Pending actions were preserved.",
+      };
+    }
 
     const successfulIds = results
       .filter((result) =>
         ["synced", "already_synced"].includes(result.status)
       )
-      .map((result) => result.local_id);
+      .map((result) => result.local_id)
+      .filter(Boolean);
+
+    const failedResults = results.filter(
+      (result) => result.status === "failed"
+    );
 
     const remainingActions = actions.filter(
       (action) => !successfulIds.includes(action.local_id)
     );
 
-    const tickets = getOfflineTickets().map((ticket) => {
-      if (successfulIds.includes(ticket.local_id)) {
-        const result = results.find(
-          (item) => item.local_id === ticket.local_id
-        );
-
-        return {
-          ...ticket,
-          local_status: "Synced",
-          server_ticket_id: result?.ticket?.id || null,
-          sync_message: result?.status || "synced",
-        };
-      }
-
-      const failedResult = results.find(
+    const updatedTickets = getOfflineTickets().map((ticket) => {
+      const result = results.find(
         (item) => item.local_id === ticket.local_id
       );
 
-      if (failedResult?.status === "failed") {
+      if (
+        result &&
+        ["synced", "already_synced"].includes(result.status)
+      ) {
+        return {
+          ...ticket,
+          local_status: "Synced",
+          server_ticket_id: result.ticket?.id || null,
+          sync_message: "Successfully synced with server.",
+          synced_at: new Date().toISOString(),
+        };
+      }
+
+      if (result?.status === "failed") {
         return {
           ...ticket,
           local_status: "Failed",
-          sync_message: failedResult.message,
+          sync_message:
+            result.message || "Sync failed. Please try again.",
+        };
+      }
+
+      // Keep unresolved actions pending for a future retry
+      const stillPending = remainingActions.some(
+        (action) => action.local_id === ticket.local_id
+      );
+
+      if (stillPending) {
+        return {
+          ...ticket,
+          local_status: "Pending Sync",
         };
       }
 
@@ -128,20 +197,56 @@ export const syncOfflineActions = async (api) => {
       JSON.stringify(remainingActions)
     );
 
-    localStorage.setItem(TICKETS_KEY, JSON.stringify(tickets));
+    localStorage.setItem(
+      TICKETS_KEY,
+      JSON.stringify(updatedTickets)
+    );
+
+    const syncedCount = successfulIds.length;
+    const failedCount = failedResults.length;
 
     return {
-      success: true,
+      success: failedCount === 0 && remainingActions.length === 0,
       results,
-      message: "Offline sync completed.",
+      syncedCount,
+      failedCount,
+      pendingCount: remainingActions.length,
+      message:
+        failedCount > 0 || remainingActions.length > 0
+          ? `${syncedCount} action(s) synced. ${remainingActions.length} action(s) still pending.`
+          : `${syncedCount} action(s) synced successfully.`,
     };
   } catch (error) {
+    // Keep all actions so the user can retry later
+    const currentTickets = getOfflineTickets().map((ticket) => {
+      const hasPendingAction = actions.some(
+        (action) => action.local_id === ticket.local_id
+      );
+
+      return hasPendingAction
+        ? {
+            ...ticket,
+            local_status: "Pending Sync",
+            sync_message:
+              error.response?.data?.message ||
+              error.message ||
+              "Network error. Please retry.",
+          }
+        : ticket;
+    });
+
+    localStorage.setItem(
+      TICKETS_KEY,
+      JSON.stringify(currentTickets)
+    );
+
     return {
       success: false,
       message:
         error.response?.data?.message ||
         error.message ||
         "Unable to sync offline data.",
+      pendingCount: actions.length,
     };
   }
 };

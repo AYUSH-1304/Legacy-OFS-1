@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "../services/api";
 
@@ -49,7 +49,7 @@ function TicketDetails() {
   });
 
   // Fetch Ticket Details
-  const fetchDetails = async () => {
+  const fetchDetails = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -73,16 +73,23 @@ function TicketDetails() {
     } catch (err) {
       setError(
         err.response?.data?.message ||
-        "Unable to load ticket details."
+          "Unable to load ticket details."
       );
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchDetails();
   }, [id]);
+
+  // Load Ticket Details
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      fetchDetails();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [fetchDetails]);
 
   // Start Editing Ticket
   const startTicketEdit = () => {
@@ -167,7 +174,7 @@ function TicketDetails() {
     } catch (err) {
       setError(
         err.response?.data?.message ||
-        "Unable to update ticket."
+          "Unable to update ticket."
       );
     }
   };
@@ -243,7 +250,7 @@ function TicketDetails() {
     } catch (err) {
       setError(
         err.response?.data?.message ||
-        "Unable to add line item."
+          "Unable to add line item."
       );
     }
   };
@@ -304,15 +311,12 @@ function TicketDetails() {
       setError("");
       setMessage("");
 
-      await api.put(
-        `/tickets/${id}/line-items/${itemId}`,
-        {
-          item_type: editForm.item_type,
-          description: editForm.description.trim(),
-          quantity: Number(editForm.quantity),
-          unit_price: Number(editForm.unit_price),
-        }
-      );
+      await api.put(`/tickets/${id}/line-items/${itemId}`, {
+        item_type: editForm.item_type,
+        description: editForm.description.trim(),
+        quantity: Number(editForm.quantity),
+        unit_price: Number(editForm.unit_price),
+      });
 
       setMessage("Line item updated successfully!");
       setEditingItemId(null);
@@ -321,7 +325,7 @@ function TicketDetails() {
     } catch (err) {
       setError(
         err.response?.data?.message ||
-        "Unable to update line item."
+          "Unable to update line item."
       );
     }
   };
@@ -350,7 +354,7 @@ function TicketDetails() {
     } catch (err) {
       setError(
         err.response?.data?.message ||
-        "Unable to delete line item."
+          "Unable to delete line item."
       );
     }
   };
@@ -377,7 +381,7 @@ function TicketDetails() {
     } catch (err) {
       setError(
         err.response?.data?.message ||
-        "Unable to update ticket status."
+          "Unable to update ticket status."
       );
     }
   };
@@ -406,7 +410,7 @@ function TicketDetails() {
     } catch (err) {
       setError(
         err.response?.data?.message ||
-        "Unable to add comment."
+          "Unable to add comment."
       );
     }
   };

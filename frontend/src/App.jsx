@@ -19,10 +19,11 @@ import Devices from "./pages/Devices";
 import OfflineTickets from "./pages/OfflineTickets";
 import TemplateManagement from "./pages/TemplateManagement";
 
+import Navbar from "./components/Navbar";
+
 import api from "./services/api";
 import { syncOfflineActions } from "./services/offlineSync";
 
-// Protected Route
 function ProtectedRoute({ children, adminOnly = false }) {
   const token = localStorage.getItem("token");
   const user = JSON.parse(localStorage.getItem("user") || "null");
@@ -38,7 +39,6 @@ function ProtectedRoute({ children, adminOnly = false }) {
   return children;
 }
 
-// Global Automatic Offline Sync
 function AutoSync() {
   const syncingRef = useRef(false);
 
@@ -48,9 +48,7 @@ function AutoSync() {
         return;
       }
 
-      if (syncingRef.current) {
-        return;
-      }
+      if (syncingRef.current) return;
 
       syncingRef.current = true;
 
@@ -69,10 +67,8 @@ function AutoSync() {
       }
     };
 
-    // Try sync when application opens
     runSync();
 
-    // Try sync when internet returns
     window.addEventListener("online", runSync);
 
     return () => {
@@ -83,7 +79,6 @@ function AutoSync() {
   return null;
 }
 
-// Main App
 function App() {
   return (
     <BrowserRouter>
@@ -100,7 +95,10 @@ function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <Dashboard />
+              <>
+                <Navbar />
+                <Dashboard />
+              </>
             </ProtectedRoute>
           }
         />
@@ -109,7 +107,10 @@ function App() {
           path="/tickets"
           element={
             <ProtectedRoute>
-              <MyTickets />
+              <>
+                <Navbar />
+                <MyTickets />
+              </>
             </ProtectedRoute>
           }
         />
@@ -118,7 +119,10 @@ function App() {
           path="/tickets/create"
           element={
             <ProtectedRoute>
-              <CreateTicket />
+              <>
+                <Navbar />
+                <CreateTicket />
+              </>
             </ProtectedRoute>
           }
         />
@@ -127,7 +131,10 @@ function App() {
           path="/tickets/:id"
           element={
             <ProtectedRoute>
-              <TicketDetails />
+              <>
+                <Navbar />
+                <TicketDetails />
+              </>
             </ProtectedRoute>
           }
         />
@@ -136,7 +143,10 @@ function App() {
           path="/devices"
           element={
             <ProtectedRoute>
-              <Devices />
+              <>
+                <Navbar />
+                <Devices />
+              </>
             </ProtectedRoute>
           }
         />
@@ -145,24 +155,34 @@ function App() {
           path="/admin"
           element={
             <ProtectedRoute adminOnly>
-              <AdminDashboard />
+              <>
+                <Navbar />
+                <AdminDashboard />
+              </>
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/admin/templates"
           element={
             <ProtectedRoute adminOnly>
-            <TemplateManagement />
-             </ProtectedRoute>
-         }
+              <>
+                <Navbar />
+                <TemplateManagement />
+              </>
+            </ProtectedRoute>
+          }
         />
 
         <Route
           path="/offline-tickets"
           element={
             <ProtectedRoute>
-              <OfflineTickets />
+              <>
+                <Navbar />
+                <OfflineTickets />
+              </>
             </ProtectedRoute>
           }
         />
@@ -174,4 +194,3 @@ function App() {
 }
 
 export default App;
-

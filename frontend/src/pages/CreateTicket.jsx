@@ -20,8 +20,21 @@ function CreateTicket() {
   const [customFields, setCustomFields] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Load templates and cache them for offline use
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   useEffect(() => {
     const loadTemplates = async () => {
       try {
@@ -38,7 +51,7 @@ function CreateTicket() {
           "legacy_ofs_templates",
           JSON.stringify(loadedTemplates)
         );
-      } catch (err) {
+      } catch {
         const cachedTemplates = JSON.parse(
           localStorage.getItem("legacy_ofs_templates") || "[]"
         );
@@ -85,7 +98,7 @@ function CreateTicket() {
     const value = customFields[fieldName] ?? "";
 
     return (
-      <div key={fieldName}>
+      <div className="create-field" key={fieldName}>
         <label>
           {field.label || fieldName.replaceAll("_", " ")}
           {field.required ? " *" : ""}
@@ -154,16 +167,13 @@ function CreateTicket() {
     };
 
     try {
-      // Save locally when internet is unavailable
       if (!navigator.onLine) {
         saveOfflineTicket(payload);
-
         alert("Ticket saved offline! It will sync when internet returns.");
         navigate("/offline-tickets");
         return;
       }
 
-      // Normal online ticket creation
       await api.post("/tickets", {
         template_key: form.template_key,
         customer_name: payload.customer_name,
@@ -176,7 +186,6 @@ function CreateTicket() {
       alert("Ticket created successfully!");
       navigate("/tickets");
     } catch (err) {
-      // Queue only when the server could not be reached
       if (!err.response && selectedTemplate?.id) {
         try {
           saveOfflineTicket(payload);
@@ -197,76 +206,111 @@ function CreateTicket() {
 
   return (
     <div className="page-container">
-      <h1>Create New Ticket</h1>
+      <div className="page-header">
+        <div>
+          <h1>Create New Ticket</h1>
+          <p>Create a field service ticket or inspection report.</p>
+        </div>
 
-      <p>
-        <Link to="/dashboard">Dashboard</Link>
-        {" | "}
-        <Link to="/tickets">My Tickets</Link>
-      </p>
+        <Link to="/tickets" className="btn">
+          ← My Tickets
+        </Link>
+      </div>
 
-      <p>
-        Connection: {navigator.onLine ? "Online" : "Offline"}
-      </p>
+      <div className="create-connection">
+        <span className={isOnline ? "online-dot" : "offline-dot"} />
+        <strong>{isOnline ? "Online Mode" : "Offline Mode"}</strong>
+        <span>
+          {isOnline
+            ? "Ticket will be saved to the server."
+            : "Ticket will be saved locally for later synchronization."}
+        </span>
+      </div>
 
-      <form className="ticket-form" onSubmit={handleSubmit}>
+      <form className="ticket-form create-ticket-form" onSubmit={handleSubmit}>
         {error && <p className="error-message">{error}</p>}
 
-        <label>Ticket Template *</label>
+        <section className="create-form-section">
+          <h2>Ticket Information</h2>
+          <p>Select a template and enter customer details.</p>
 
-        <select
-          name="template_key"
-          value={form.template_key}
-          onChange={handleChange}
-          required
-        >
-          <option value="">Select Template</option>
+          <div className="create-field">
+            <label>Ticket Template *</label>
+            <select
+              name="template_key"
+              value={form.template_key}
+              onChange={handleChange}
+              required
+            >
+              <option value="">Select Template</option>
 
-          {templates.map((template) => (
-            <option key={template.id} value={template.template_key}>
-              {template.name}
-            </option>
-          ))}
-        </select>
+              {templates.map((template) => (
+                <option key={template.id} value={template.template_key}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <label>Customer Name *</label>
+          <div className="create-field">
+            <label>Customer Name *</label>
+            <input
+              name="customer_name"
+              value={form.customer_name}
+              onChange={handleChange}
+              placeholder="Enter customer name"
+              required
+            />
+          </div>
 
-        <input
-          name="customer_name"
-          value={form.customer_name}
-          onChange={handleChange}
-          placeholder="Enter customer name"
-          required
-        />
+          <div className="create-date-grid">
+            <div className="create-field">
+              <label>Work Start Date</label>
+              <input
+                type="date"
+                name="work_start_date"
+                value={form.work_start_date}
+                onChange={handleChange}
+              />
+            </div>
 
-        <label>Work Start Date</label>
-
-        <input
-          type="date"
-          name="work_start_date"
-          value={form.work_start_date}
-          onChange={handleChange}
-        />
-
-        <label>Work End Date</label>
-
-        <input
-          type="date"
-          name="work_end_date"
-          value={form.work_end_date}
-          onChange={handleChange}
-        />
+            <div className="create-field">
+              <label>Work End Date</label>
+              <input
+                type="date"
+                name="work_end_date"
+                value={form.work_end_date}
+                onChange={handleChange}
+                min={form.work_start_date || undefined}
+              />
+            </div>
+          </div>
+        </section>
 
         {selectedTemplate && (
-          <>
+          <section className="create-form-section">
             <h2>{selectedTemplate.name} Fields</h2>
-            {(selectedTemplate.fields || []).map(renderField)}
-          </>
+            <p>Complete the additional information for this template.</p>
+
+            <div className="create-custom-fields">
+              {(selectedTemplate.fields || []).map(renderField)}
+            </div>
+          </section>
         )}
 
-        <button type="submit" disabled={loading}>
-          {loading ? "Saving..." : "Create Ticket"}
-        </button>
+        <div className="create-form-actions">
+          <button type="submit" disabled={loading}>
+            {loading
+              ? "Saving..."
+              : isOnline
+                ? "Create Ticket"
+                : "Save Ticket Offline"}
+          </button>
+
+          <Link to="/tickets" className="cancel-link">
+            Cancel
+          </Link>
+        </div>
       </form>
     </div>
   );
